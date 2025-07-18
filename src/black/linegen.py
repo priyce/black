@@ -1051,16 +1051,6 @@ def _should_keep_parens_in_case_guard(
     return True
 
 
-def _is_case_guard(line: Line) -> bool:
-    found_case = False
-    for leaf in line.leaves:
-        if leaf.value == "case":
-            found_case = True
-        elif found_case and leaf.value == "if":
-            return True
-    return False
-
-
 def _prefer_split_rhs_oop_over_rhs(
     rhs_oop: RHSResult, rhs: RHSResult, mode: Mode
 ) -> bool:
