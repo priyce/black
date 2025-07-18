@@ -679,7 +679,7 @@ def transform_line(
                     yield from lines
                     return
 
-            # All splits failed, best effort split with no omits.
+            # All splits failed the best effort split with no omits.
             # This mostly happens to multiline strings that are by definition
             # reported as not fitting a single line, as well as lines that contain
             # trailing commas (those have to be exploded).
@@ -978,7 +978,8 @@ def _maybe_split_omitting_optional_parens(
         # in this case; attempting a split without them is a waste of time)
         and not line.is_import
         # and we can actually remove the parens
-        and can_omit_invisible_parens(rhs, mode.line_length)
+        and (can_omit_invisible_parens(rhs, mode.line_length)
+             or not _should_keep_parens_in_case_guard(line, mode))
     ):
         omit = {id(rhs.closing_bracket), *omit}
         try:
@@ -1020,11 +1021,44 @@ def _maybe_split_omitting_optional_parens(
                     " line."
                 ) from e
 
-    ensure_visible(rhs.opening_bracket)
-    ensure_visible(rhs.closing_bracket)
+    if _should_keep_parens_in_case_guard(line, mode=mode):
+        ensure_visible(rhs.opening_bracket)
+        ensure_visible(rhs.closing_bracket)
+
     for result in (rhs.head, rhs.body, rhs.tail):
         if result:
             yield result
+
+
+def _should_keep_parens_in_case_guard(
+        line: Line,
+        mode: Mode,
+) -> bool:
+    """Return True if line is part of a match/case statement with a guard."""
+    # 🛑 A. If the line is too long, we want parens to help break it
+    if not is_line_short_enough(line, mode=mode):
+        return True  # Keep parens
+
+    for leaf in line.leaves:
+        if leaf.value == "case":
+            # Look for 'if' after pattern
+            for later_leaf in line.leaves[line.leaves.index(leaf):]:
+                if later_leaf.value == "if":
+                    return False  # We don't want parens around the guard
+            break
+
+    # Keep parens in all other cases
+    return True
+
+
+def _is_case_guard(line: Line) -> bool:
+    found_case = False
+    for leaf in line.leaves:
+        if leaf.value == "case":
+            found_case = True
+        elif found_case and leaf.value == "if":
+            return True
+    return False
 
 
 def _prefer_split_rhs_oop_over_rhs(
