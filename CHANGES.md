@@ -22,6 +22,7 @@
 - Remove support for pre-python 3.7 `await/async` as soft keywords/variable names
   (#4676)
 - Fix crash on parenthesized expression inside a type parameter bound (#4684)
+- Fix if guard exploding in case patterns with trailing commas (#4653)
 
 ### Preview style
 
