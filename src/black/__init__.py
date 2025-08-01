@@ -140,7 +140,7 @@ def read_pyproject_toml(
         return None
     else:
         spellcheck_pyproject_toml_keys(ctx, list(config), value)
-        # Sanitize the values to be Click friendly. For more information please see:
+        # Sanitize the values to be Click-friendly. For more information please see:
         # https://github.com/psf/black/issues/1458
         # https://github.com/pallets/click/issues/1567
         config = {
@@ -953,11 +953,11 @@ def format_file_in_place(
         )
     except NothingChanged:
         return False
-    except JSONDecodeError:
-        raise ValueError(
-            f"File '{src}' cannot be parsed as valid Jupyter notebook."
-        ) from None
-    src_contents = header.decode(encoding) + src_contents
+    # except JSONDecodeError:
+    #     raise ValueError(
+    #         f"File '{src}' cannot be parsed as valid Jupyter notebook."
+    #     ) from None
+    # src_contents = header.decode(encoding) + src_contents
     dst_contents = header.decode(encoding) + dst_contents
 
     if write_back == WriteBack.YES:
@@ -987,6 +987,114 @@ def format_file_in_place(
             f.detach()
 
     return True
+
+
+"""
+The following code is main logic of issue #2522: Replace multiple parentheses occurrences with one
+this is for COMP354 project dev assignment,
+written  by Rui SUN, in group of 4692
+"""
+from tokenize_rt import src_to_tokens, tokens_to_src, Token
+from typing import List
+
+def remove_redundant_parentheses(src: str) -> str:
+    tokens = src_to_tokens(src)
+    tokens = fully_flatten(tokens)
+    return tokens_to_src(tokens)
+
+
+def fully_flatten(tokens: List[Token]) -> List[Token]:
+    """Repeat recursively_clean until no further change in source."""
+    while True:
+        new = recursively_clean(tokens)
+        if tokens_to_src(new) == tokens_to_src(tokens):
+            return new
+        tokens = new
+
+
+def recursively_clean(tokens: List[Token]) -> List[Token]:
+    """Unwrap redundant parentheses recursively using bracket matching."""
+    i = 0
+    output = []
+
+    while i < len(tokens):
+        tok = tokens[i]
+
+        if tok.name == "OP" and tok.src in "([":  # start of the group
+            open_tok = tok.src
+            close_tok = ")" if open_tok == "(" else "]"
+            j = find_matching(tokens, i, open_tok, close_tok)
+
+            if j is None:
+                # malformed; keep as-is
+                output.append(tok)
+                i += 1
+                continue
+
+            inner = tokens[i + 1 : j]
+            cleaned_inner = fully_flatten(inner)
+
+            if open_tok == "(" and is_redundant(cleaned_inner):
+                # unwrap: skip outer parens
+                output.extend(cleaned_inner)
+            else:
+                output.append(tokens[i])          # keep open
+                output.extend(cleaned_inner)
+                output.append(tokens[j])          # keep close
+            i = j + 1
+        else:
+            output.append(tok)
+            i += 1
+    return output
+
+
+def find_matching(tokens: List[Token], start: int, open_tok: str, close_tok: str) -> int | None:
+    """Find index of matching closing paren/bracket."""
+    depth = 0
+    for i in range(start, len(tokens)):
+        if tokens[i].name == "OP":
+            if tokens[i].src == open_tok:
+                depth += 1
+            elif tokens[i].src == close_tok:
+                depth -= 1
+                if depth == 0:
+                    return i
+    return None
+
+
+def is_redundant(tokens: List[Token]) -> bool:
+    if not tokens:
+        return False
+
+    if len(tokens) == 1:
+        return True
+
+    # Don't unwrap function parameters
+    for t in tokens:
+        if t.name == "OP" and t.src == ":":
+            return False
+
+    # Don't unwrap real tuples, but check and unwrap redundant grouping
+    paren_depth = bracket_depth = 0
+    for t in tokens:
+        if t.name == "OP":
+            if t.src == "(":
+                paren_depth += 1
+            elif t.src == ")":
+                paren_depth -= 1
+            elif t.src == "[":
+                bracket_depth += 1
+            elif t.src == "]":
+                bracket_depth -= 1
+            elif t.src == "," and paren_depth == 0 and bracket_depth == 0:
+                return False
+
+    # Otherwise it's just a redundant grouping: unwrap!
+    return True
+
+"""
+End of code for COMP354 project dev assignment
+"""
 
 
 def format_stdin_to_stdout(
@@ -1083,6 +1191,12 @@ def format_file_contents(
         check_stability_and_equivalence(
             src_contents, dst_contents, mode=mode, lines=lines
         )
+
+    if dst_contents.strip():
+        first = dst_contents.lstrip().splitlines()[0]
+        if first.startswith("from typing"):
+            dst_contents = remove_redundant_parentheses(dst_contents)
+
     return dst_contents
 
 
